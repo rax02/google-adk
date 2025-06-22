@@ -1,0 +1,459 @@
+var OmniPresenceAvailabilityStatus = {};
+(function (PresenceStatus) {
+  PresenceStatus["Error"] = "Error";
+  PresenceStatus["Success"] = "Success";
+  PresenceStatus["NotInitialized"] = "NotInitialized";
+  PresenceStatus["Available"] = "Available";
+  PresenceStatus["NotAvailable"] = "NotAvailable";
+}(OmniPresenceAvailabilityStatus));
+
+var OmniPresenceKeepAliveStatus = {};
+(function(KeepAliveStatus) {
+  KeepAliveStatus["NotInitialized"] = "NotInitialized";
+  KeepAliveStatus["NotStarted"] = "NotStarted";
+  KeepAliveStatus["Started"] = "Started";
+  KeepAliveStatus["AlreadyRunning"] = "AlreadyRunning";
+}(OmniPresenceKeepAliveStatus));
+
+var MCAWorkerMethod = {};
+(function(WorkerMethod) {
+  WorkerMethod["InitializeRest"] = "InitializeRest";
+  WorkerMethod["RenewRest"] = "RenewRest";
+  WorkerMethod["StartOmniKeepAlive"] = "StartOmniKeepAlive";
+  WorkerMethod["InitOmniSession"] = "InitOmniSession";
+  WorkerMethod["GetSRAvailability"] = "GetSRAvailability";
+  WorkerMethod["SetSRAvailability"] = "SetSRAvailability";
+  WorkerMethod["NOOP"] = "NOOP";
+}(MCAWorkerMethod));
+
+var MCAWorkerMessage = (function (){
+  function MCAWorkerMessage() {
+    this.method = MCAWorkerMethod.NOOP;
+    this.srAvailability = false;
+    this.status = null;
+  }
+  return MCAWorkerMessage;
+}());
+
+var MCASWRestHelper = (function() {
+  function MCASWRestHelper(configuration) {
+    this.pre = '[McaSWRestHelper] ';
+    this.renewTknInitiated = false;
+    this.restCallsQueue = [];
+    this.demoSeedJwt = configuration.demoSeedJwt;
+    this.debugMode = configuration.debugMode;
+    this.jwtTkn = configuration.jwtTkn;
+    this.origin = configuration.origin;
+    this.renewTknReqCallback = configuration.renewTknReqCallback;
+    this.unitTestMode = configuration.unitTestMode;
+  }
+  MCASWRestHelper.prototype.updateJwtTkn = function(jwtTkn) {
+    this.jwtTkn = jwtTkn;
+    if (this.renewTknInitiated) {
+      this.renewTknInitiated = false;
+    }
+    while (this.restCallsQueue.length > 0) {
+      const pendingRestCall = this.restCallsQueue.shift();
+      if (pendingRestCall) {
+        pendingRestCall();
+        // console.log(`${this.pre} ===> Queued REST call`);
+      }
+    }
+  };
+  MCASWRestHelper.prototype.fetch = function(url, options) {
+    let jwtExpired = false;
+    if (!this.unitTestMode && this.jwtTkn && this.jwtTkn.split('.').length === 3) {
+      const payloadB64 = this.jwtTkn.split('.')[1];
+      try {
+        const payload = JSON.parse(atob(payloadB64));
+        if (payload.exp && payload.exp <= Math.floor(Date.now() / 1000)) {
+          jwtExpired = true;
+          if (!this.renewTknInitiated) {
+            this.renewTknInitiated = true;
+            this.renewTknReqCallback();
+          }
+        } else {
+          if (this.debugMode) {
+            console.log(`${this.pre} Token validity remaining ${payload.exp - Math.floor(Date.now() / 1000)}sec`);
+          }
+        }
+      } catch (error) {
+        const errMsg = ` - Error message: ${error}`;
+        console.error(`${this.pre} Error while checking token validity ${errMsg}`);
+      }
+    }
+    let jwt = 'Bearer ' + this.jwtTkn;
+    try {
+      if (this.demoSeedJwt) {
+        jwt = 'Basic ' + this.demoSeedJwt;
+      }
+    } catch (errSeedJwt) { }
+    if (options) {
+      options.headers = options.headers || {};
+      options.headers['Authorization'] = jwt;
+    } else {
+      options = { headers: {} };
+      options.headers['Authorization'] = jwt;
+      options['method'] = 'GET';
+    }
+    var fetchUrl = this.origin + url;
+    const fetchPromise = new Promise((resolve, reject) => {
+      const fetchExecute = () => {
+        try {
+          fetch(fetchUrl, options).then((response) => {
+            if (response.ok) {
+              response.text().then((fetchBody) => {
+                resolve(fetchBody);
+              });
+            } else {
+              if (this.debugMode) {
+                console.log(`${this.pre}fetch failed with status: ${response.status}`);
+              }
+              reject(JSON.stringify({ error: `Status: ${response.status}` }));
+            }
+          });
+        } catch (fetchError) {
+          if (this.debugMode) {
+            console.log(`${this.pre}fetch failed with error: ${fetchError}`);
+          }
+          reject(JSON.stringify({ error: `Reason: ${fetchError}` }));
+        }
+      };
+      if (jwtExpired) {
+        this.restCallsQueue.push(fetchExecute);
+      } else {
+        fetchExecute();
+      }
+    });
+    return fetchPromise;
+  };
+
+  return MCASWRestHelper;
+}());
+
+var McaSharedWorker =  (function() {
+
+  function MCASharedWorker() {
+    this.pre = '[MCASharedWorker] ';
+    this.omniPollerTimeout = 30000; // milis
+    this.restHelper = null;
+    this.sessionId = null;
+    this.agentPartyId = null;
+    this.debugMode = false;
+    this.isSrAvailabilityRead = false;
+    this.srAvailability = false;
+    this.isSrAvailabilityUpdateInProgress = false;
+    this.omniPollerRunning = false;
+    this.isOmniSessionStarted = false;
+    this.unitTestMode = false;
+  }
+
+  MCASharedWorker.prototype.onConnectHandler = function(eventData) {
+    console.log(this.pre + ' Client connected ',eventData);
+    const port = eventData.ports[0];
+    port.addEventListener('message', (message) => {
+      // Handle message
+      if (this.debugMode) {
+        console.log(this.pre + ' Message received: ', message.data);
+      }
+      if (message && message.data) {
+        var response = null;
+        var method = message.data.method;
+        switch(method) {
+          case MCAWorkerMethod.InitializeRest:
+
+            this.agentPartyId = message.data.agentPartyId;
+            this.debugMode = message.data.debugMode;
+            this.sessionId = message.data.sessionId;
+            this.unitTestMode = message.data.unitTestMode || false;
+            if (!this.restHelper) {
+              this.restHelper = new MCASWRestHelper({ 
+                debugMode: message.data.debugMode,
+                demoSeedJwt: message.data.demoSeedJwt,
+                jwtTkn: message.data.jwtTkn,
+                origin: message.data.origin,
+                renewTknReqCallback: () => {
+                  var callbackRenew = new MCAWorkerMessage();
+                  callbackRenew.method = MCAWorkerMethod.RenewRest;
+                  port.postMessage(callbackRenew);
+                },
+                unitTestMode: this.unitTestMode
+              });
+            } else {
+              if (this.debugMode) {
+                console.log(`${this.pre} Rest services already intialized!`);
+              }
+            }
+            break;
+          case MCAWorkerMethod.RenewRest: 
+            if (this.restHelper) {
+              this.restHelper.updateJwtTkn(message.data.jwtTkn);
+            }
+            break;
+          case MCAWorkerMethod.StartOmniKeepAlive:
+            response = new MCAWorkerMessage();
+            response.method = MCAWorkerMethod.StartOmniKeepAlive;
+            response.status = this.runOmniPoller();
+            break;
+          case MCAWorkerMethod.InitOmniSession:
+            // Send the response after REST completes
+            var startOmni = (response) => {
+              this.isOmniSessionStarted = true;
+              port.postMessage(response);              
+            };
+            var execStatus = this.startOmniSession(startOmni);
+            if (execStatus !== OmniPresenceAvailabilityStatus.Success) {
+              response = new MCAWorkerMessage();
+              response.method = MCAWorkerMethod.InitOmniSession;
+              response.status = execStatus;
+            }
+            break;
+          case MCAWorkerMethod.GetSRAvailability:
+            // check local value has been retrieved
+            if (this.isSrAvailabilityRead) {
+              if (this.debugMode) {
+                console.log(`${this.pre} SR availablity already retrieved: ${this.srAvailability}`);
+              }
+              response = new MCAWorkerMessage();
+              response.method = MCAWorkerMethod.GetSRAvailability;
+              response.srAvailability = this.srAvailability;
+              response.status = this.srAvailability ? OmniPresenceAvailabilityStatus.Available : OmniPresenceAvailabilityStatus.NotAvailable;
+            } else {
+              var getAvailability = (status) => {
+                // set local value
+                this.srAvailability = (status === OmniPresenceAvailabilityStatus.Available);
+                if (this.debugMode) {
+                  console.log(`${this.pre} read SR availablity as: ${this.srAvailability}`);
+                }
+                this.isSrAvailabilityRead = true;
+                var callbackResponse = new MCAWorkerMessage();
+                callbackResponse.method = MCAWorkerMethod.GetSRAvailability;
+                callbackResponse.srAvailability = this.srAvailability;
+                callbackResponse.status = status;
+                port.postMessage(callbackResponse);
+              };
+              var execStatus = this.getSRAvailability(getAvailability);
+              if (execStatus !== OmniPresenceAvailabilityStatus.Success) {
+                response = new MCAWorkerMessage();
+                response.method = MCAWorkerMethod.GetSRAvailability;
+                response.status = execStatus;
+              }
+            }
+            break;
+          case MCAWorkerMethod.SetSRAvailability:
+            var newAvailability = message.data.newAvailability;
+            if (newAvailability == this.srAvailability) {
+              // we just don't try to set it to same value
+              break;
+            }
+            this.isSrAvailUpdateInProgress = true;
+            var setAvailability = (status) => {
+              this.srAvailability = !this.srAvailability;
+              this.isSrAvailUpdateInProgress = false;
+              var callbackResponse = new MCAWorkerMessage();
+              callbackResponse.method = MCAWorkerMethod.SetSRAvailability;
+              callbackResponse.srAvailability = this.srAvailability;
+              callbackResponse.status = status;
+              port.postMessage(callbackResponse);
+            };
+            var execStatus = this.setSRAvailability(setAvailability);
+            if (execStatus !== OmniPresenceAvailabilityStatus.Success) {
+              this.isSrAvailUpdateInProgress = false;
+              response = new MCAWorkerMessage();
+              response.method = MCAWorkerMethod.SetSRAvailability;
+              response.status = execStatus;
+            }
+            break;
+          default:
+            break;
+        }
+        if (response) {
+          // Send response
+          port.postMessage(response);
+        }
+      }
+    });
+    port.start();
+  }
+
+  MCASharedWorker.prototype.runOmniPoller = function() {
+    if (!this.restHelper) {
+      return OmniPresenceKeepAliveStatus.NotInitialized;
+    }
+    if (this.omniPollerRunning) {
+      return OmniPresenceKeepAliveStatus.AlreadyRunning;
+    }
+    this.omniPollerRunning = true;
+    var retryCount = 0;
+    var omniPoller = () => {
+      const endPoint = '/crmRestApi/resources/latest/resourcePresences/' + this.agentPartyId + '/action/keepAlive';
+      const endPointOptions = {
+        body: JSON.stringify({}),
+        headers: {
+          'Content-Type': 'application/vnd.oracle.adf.action+json',
+          'REST-Framework-Version': '9'
+        },
+        method: 'POST'
+      };
+      this.restHelper.fetch(endPoint, endPointOptions)
+          .then((result) => {
+            if (this.debugMode) {
+              console.log(`${this.pre} Successfull keepAlive to Omni `);
+            }
+            // setup poll
+            setTimeout(omniPoller, this.omniPollerTimeout);
+          })
+          .catch((reason) => {
+            const errMsg = ` - Error message: ${reason}`;
+            console.error(`${this.pre} Error while keepAlive to Omni ${errMsg}`);
+            retryCount++;
+            if (retryCount <= 10) {
+              setTimeout(omniPoller, this.omniPollerTimeout);
+            } else {
+              this.omniPollerRunning = false;
+              if (this.debugMode) {
+                console.log(`${this.pre} Reached retry limit to keepAlive to Omni - STOPPING KeepAlive !!!`);
+              }
+            }
+          });
+    }
+    setTimeout(omniPoller, this.omniPollerTimeout);
+    return OmniPresenceKeepAliveStatus.Started;
+  }
+
+  MCASharedWorker.prototype.startOmniSession = function(callback) {
+    if (!this.restHelper) {
+      return OmniPresenceAvailabilityStatus.NotInitialized;
+    }
+    if (!callback) {
+      return OmniPresenceAvailabilityStatus.Error;
+    }
+    // StartAgentSession is now called from main before the SharedWorker is started.
+    var startOmniResponse = new MCAWorkerMessage();
+    startOmniResponse.method = MCAWorkerMethod.InitOmniSession;
+    if (this.isOmniSessionStarted) {
+      if (this.debugMode) {
+        console.info(`${this.pre} Omni agent session already started !`);
+      }
+      startOmniResponse.status = OmniPresenceAvailabilityStatus.Success;
+      callback(startOmniResponse);
+      return OmniPresenceAvailabilityStatus.Success;
+    }
+    const endPoint = '/crmRestApi/resources/latest/resourcePresences/' + this.agentPartyId;
+    const endPointOptions = {
+        body: JSON.stringify({
+            'DisabledAvailabilityCd': 'NONE',
+            'SessionId': this.sessionId,
+            'StartAgentSessionFlag': true
+        }),
+        headers: {
+            'Content-Type': 'application/json',
+            'REST-Framework-Version': '9'
+        },
+        method: 'PATCH'
+    };
+    this.restHelper.fetch(endPoint, endPointOptions)
+        .then((result) => {
+          if (this.debugMode) {
+            console.info(`${this.pre} Succesfully create Omni agent session !`);
+          }
+          startOmniResponse.status = OmniPresenceAvailabilityStatus.Success;
+          callback(startOmniResponse);
+        })
+        .catch((reason) => {
+          const errMsg = ` - Error message: ${reason}`;
+          console.error(`${this.pre} Error while create Omni agent session ${errMsg}`);
+          startOmniResponse.status = OmniPresenceAvailabilityStatus.Error;
+          startOmniResponse.reason = reason;
+          callback(startOmniResponse);
+        });
+    return OmniPresenceAvailabilityStatus.Success;
+  }
+
+  MCASharedWorker.prototype.getSRAvailability = function(callback) {
+    if (!this.restHelper) {
+      return OmniPresenceAvailabilityStatus.NotInitialized;
+    }
+    if (!callback) {
+      return OmniPresenceAvailabilityStatus.Error;
+    }
+    const endPoint = '/crmRestApi/resources/latest/resourcePresences/' + this.agentPartyId;
+    const endPointOptions = {
+        body: JSON.stringify({
+            'GetAvailabilityFlag': true,
+            'MediaGroup': 'ORA_SVC_MEDIA_WORK'
+        }),
+        headers: {
+            'Content-Type': 'application/json',
+            'REST-Framework-Version': '9'
+        },
+        method: 'PATCH'
+    };
+    this.restHelper.fetch(endPoint, endPointOptions)
+        .then((result) => {
+          if (this.debugMode) {
+            console.log(`${this.pre} Succesfully retrieve Omni agent availability !`);
+          }
+          const jsonResult = JSON.parse(result);
+          let isAvailable = false;
+          if (typeof (jsonResult.AvailabilityFlag) === 'string') {
+              isAvailable = (jsonResult.AvailabilityFlag === 'true');
+          }
+          else {
+              isAvailable = jsonResult.AvailabilityFlag;
+          }
+          callback(isAvailable ? OmniPresenceAvailabilityStatus.Available : OmniPresenceAvailabilityStatus.NotAvailable );
+        })
+        .catch((reason) => {
+          const errMsg = ` - Error message: ${reason}`;
+          console.error(`${this.pre} Error while retrieve Omni agent availability ${errMsg}`);
+          callback(OmniPresenceAvailabilityStatus.Error);
+        });
+    return OmniPresenceAvailabilityStatus.Success;
+  }
+
+  MCASharedWorker.prototype.setSRAvailability = function(callback) {
+    if (!this.restHelper) {
+      return OmniPresenceAvailabilityStatus.NotInitialized;
+    }
+    if (!callback) {
+      return OmniPresenceAvailabilityStatus.Error;
+    }
+    var newAvailability = !this.srAvailability;
+    const endPoint = '/crmRestApi/resources/latest/resourcePresences/' + this.agentPartyId;
+    const endPointOptions = {
+        body: JSON.stringify({
+            'AvailabilityFlag': newAvailability,
+            'MediaGroup': 'ORA_SVC_MEDIA_WORK',
+            'SetResourceAvailabilityFlag': true
+        }),
+        headers: {
+            'Content-Type': 'application/json',
+            'REST-Framework-Version': '9'
+        },
+        method: 'PATCH'
+    };
+    this.restHelper.fetch(endPoint, endPointOptions)
+        .then((result) => {
+          if (this.debugMode) {
+            console.log(`${this.pre} Response from setting Omni agent availability: ${result}`);
+          }
+          callback(OmniPresenceAvailabilityStatus.Success);
+        })
+        .catch((reason) => {
+          const errMsg = ` - Error message: ${reason}`;
+          console.error(`${this.pre} Error while setting Omni agent availability ${errMsg}`);
+          callback(OmniPresenceAvailabilityStatus.Error);
+        });
+
+    return OmniPresenceAvailabilityStatus.Success;
+  }
+
+  return MCASharedWorker;
+}());
+
+const mcaSharedWorker = new McaSharedWorker();
+this.onconnect = function(eventData) {
+  console.log('[McaSharedWorker] - Setup connect handler for: ', mcaSharedWorker);
+  mcaSharedWorker.onConnectHandler(eventData);
+};

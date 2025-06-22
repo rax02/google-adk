@@ -1,0 +1,214 @@
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+       
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"     >
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+<head>
+<title id="pageTitle"> Sign In</title>
+<link id="loginTemplateArabicCSS" rel="stylesheet" type="text/css" href="/fusion_apps/global/ver29/loginTemplate_rtl.css" />
+<link id="loginTemplateCSS" rel="stylesheet" type="text/css" href="/fusion_apps/global/ver29/loginTemplate.css"/>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<!-- Start Disable frame hijacking Script-->
+
+
+
+
+
+
+
+
+<!-- End Disable frame hijacking Script-->
+<meta name=viewport content="width=device-width, initial-scale=1">
+<script language="javascript" type="text/javascript">
+<!-- 
+var currentPageLang = 'en-us';
+
+var isError;
+
+// -->
+function submitformForTC()
+{
+        if(!document.loginForm.tc_publicsector.checked) {
+	  var valDiv = document.getElementById("validationDiv");
+	  valDiv.innerHTML = "You need to accept the terms and conditions";
+	  valDiv.style.display = "block";
+	  return false;
+	 }
+        else { 	 	
+	  document.body.style.cursor = 'wait'; 
+	  document.loginForm.action ="/oam/server/auth_cred_submit";
+	  document.loginForm.submit();
+	}
+}
+
+function callLanguageChange() {
+  console.log("Going to call language change servlet");
+  var http = new XMLHttpRequest();
+  var url = "/fusion_apps/localeChange";
+  var selectedIndx = document.loginForm.Languages.selectedIndex;
+  var selectedOption = document.loginForm.Languages.options[selectedIndx];
+  var selectedLang = document.loginForm.Languages.options[selectedIndx].value;
+  var myreq = new Ajax();
+  myreq.url=  url+"?Languages="+selectedLang+"&p_error_code="+'null';
+  myreq.success = successCallback;
+  myreq.args = null;
+  myreq.sendToServer();
+}
+
+
+
+</script>
+<script language="javascript" type="text/javascript" src="/fusion_apps/global/ver29/config.js"></script>
+<script language="javascript" type="text/javascript" src="/fusion_apps/global/ver29/messages.js"></script>
+<script language="javascript" type="text/javascript" src="/fusion_apps/global/ver29/loginJS.js"></script>
+<script language="javascript" type="text/javascript">
+function submitform()
+{
+	
+	 document.loginForm.action = "/fusion_apps/pages/login.jsp"; 
+	 document.loginForm.submit();
+	 document.loginForm.action ="/oam/server/auth_cred_submit";
+}
+</script>
+
+</head>
+<body onload="setFocusOnElement('userid');javascript:onBodyLoad();">
+<div class="header">
+	
+<!-- start Branding Area -->
+<div class="container">
+        <div class="brandContainer">
+                <div class="branding">
+                        <h1 class="head1" id="loginTitle">Sign In</h1>
+                        <h2 class="head2">Oracle Applications Cloud</h2>
+                </div>
+     </div>
+</div>
+<div class="stripe"></div>
+<!-- end Branding Area -->
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="content">
+
+
+<div class="copyrightFooter">
+
+<div class="foot">
+<div class="Ologo">
+<img alt="ORACLE &reg;" src="/fusion_apps/global/images/Oracle_rgb_black.svg" width="139" height="42" />
+</div>
+</div>
+<div class="copyright" id="copyright">Copyright(C) 2011, 2024, Oracle and/or its affiliates.</div>
+
+
+</div>
+<!-- end footer -->
+		
+<div class="message-row">
+   <noscript><p class="loginFailed">JavaScript is required. Enable JavaScript to use WebLogic Administration Console.</p></noscript>
+</div>
+
+<div class="contentContainer">
+  <div class="formContainer">
+  
+<main>
+<form  name="loginForm" class="signin_form" id="Login" action="/oam/server/auth_cred_submit" method="post" autocomplete="off">
+<!------------ DO NOT REMOVE ------------->
+<!----- loginform renderBrowserView ------>
+<!-- Required for SmartView Integration -->
+<div class="error" id="error"></div>
+<div style="height:23px;"><label name="useridLabel" id="useridLabel" style="color:#312D2A;font-size:14px;font-weight:400">User ID</label></div>
+
+
+<input name="userid" id="userid" aria-label="User ID" class="textInput" type="text" placeholder="User ID" autocomplete="off"/><br/>
+
+<div style="height:23px;"><label name="passwordLabel" id="passwordLabel" style="color:#312D2A;font-size:14px;font-weight:400" >Password</label></div>
+<input name="password" id="password" aria-label="Password" class="textInput" type="password" placeholder="Password" autocomplete="off"/><br/>
+
+
+
+
+ 
+
+ 
+        <a href="https://iartqy-dev1.fa.ocs.oraclecloud.com:443/hcmCore/faces/ForgotPassword?backUrl=https%3A%2F%2Fiartqy-dev1.fa.ocs.oraclecloud.com%2FfscmUI%2FadfAuthentication%3Flevel%3DFORM%26success_url%3D%252FfscmUI%252Ffaces%252FAtkHomePageWelcome%253F_afrLoop%253D2411250666414808%2526_afrWindowMode%253D0%2526_afrWindowId%253Dnull%2526_adf.ctrl-state%253Dpfc44nrpk_1%2526_afrFS%253D16%2526_afrMT%253Dscreen%2526_afrMFW%253D1038%2526_afrMFH%253D706%2526_afrMFDW%253D1536%2526_afrMFDH%253D864%2526_afrMFC%253D8%2526_afrMFCI%253D0%2526_afrMFM%253D0%2526_afrMFR%253D120%2526_afrMFG%253D0%2526_afrMFS%253D0%2526_afrMFO%253D0%2526_adf.no-new-window-redirect%253Dtrue"  class="forgotLink" id="forgotLink">Forgot Password</a>
+        
+       
+
+<button type="submit"  name="btnActive" onclick="form.submit();" id="btnActive">  Sign In </button><br /><br />
+
+
+
+
+
+
+<input type="hidden" name="request_id" value="799983711406448190">
+
+<input type="hidden" name="oam_mt" VALUE="">
+<input type="hidden" name="ovm" VALUE="">
+<input type="hidden"  name="cloud" id="cloud" VALUE="">
+<input type="hidden" name="buttonAction" value="local">
+<input type="hidden" name="PublicSectorType" value="">   
+<div style="height:23px;"><label name="langLabel" id="langLabel" style="color:#312D2A;font-size:14px;font-weight:400">Select Language</label></div>
+<select name="Languages"  class="defaultHidden" id="Languages"  onchange="callLanguageChange();" aria-label="Preferred Language">
+<option value="" > Select Language </option>
+</select>
+<br/>
+
+</form>
+</main>
+</div>
+</div>
+
+		
+</div>
+<script defer="defer" language="javascript" type="text/javascript">
+<!-- 
+document.loginForm.userid.onkeypress=checkForEnterKey;
+document.loginForm.password.onkeypress=checkForEnterKey;
+setCustomHeaderFooter();
+// -->
+</script>
+</body>
+</html> 
+
+

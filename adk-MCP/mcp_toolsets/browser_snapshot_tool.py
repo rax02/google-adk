@@ -5,22 +5,18 @@ from google.adk.tools.mcp_tool.mcp_toolset import StdioServerParameters
 from .utils.custom_adk_patches import CustomMCPToolset as MCPToolset
 
 # Create a unique context directory
-context_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "playwright-isolated-context.json")
-# context_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "")
+context_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "playwright-isolated-context")
 
-playwrite_tool =  MCPToolset(
+browser_snapshot_tool =  MCPToolset(
             connection_params=StdioServerParameters(
                 command='npx',
                 args=[
                     "-y",
                     "@playwright/mcp@latest",
                     # "--isolated",
-                    f"--storage-state={context_dir}",
-                    "--save-trace",
-
-                    # f"--output-dir={context_dir}"
-                    # "--browser-agent=localhost:9001"
-                    # "--cdp-endpoint=http://localhost:9222",
-                ]
-            )
+                    # f"--storage-state={context_dir}"
+                ],
+                
+            ),
+            tool_filter=["browser_snapshot"]
         )
