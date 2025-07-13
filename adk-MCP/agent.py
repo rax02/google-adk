@@ -3,6 +3,9 @@ from google.adk.agents import LlmAgent, SequentialAgent # type: ignore
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters # type: ignore
 # from .mcp_toolsets.system_file_tool import system_file_tool
 from .mcp_toolsets.playwrite_tool import playwrite_tool
+from .mcp_toolsets.browser_mcp_tool import browser_mcp_tool
+from .mcp_toolsets.browser_use_tool import browser_use_tool
+
 from google.adk.tools.tool_context import ToolContext
 from google.adk.tools.base_tool import BaseTool
 from typing import Dict, Any
@@ -33,9 +36,10 @@ def simple_after_tool_modifier(
 root_agent = LlmAgent(
     model='gemini-2.0-flash',
     name='hcm_agent',
-    instruction='''
+    instruction=
+    '''
     You are Oracle HCM Assistant, a snapshot-mode intelligent web automation agent.
-    Here is the url to Oracle HCM Cloud: https://login-iartqy-dev1.fa.ocs.oraclecloud.com/
+
     You can:
     -Open Oracle HCM Cloud using url
     - Login using user id and password.
@@ -59,6 +63,6 @@ root_agent = LlmAgent(
     # ''',
     # output_key="browser_snapshot",
     # sub_agents=[browser_agent, browser_snapshot_agent],
-    tools=[playwrite_tool],
-    after_tool_callback=simple_after_tool_modifier # Assign the callback
+    tools=[browser_use_tool],
+    # after_tool_callback=simple_after_tool_modifier # Assign the callback
 )
